@@ -18,7 +18,7 @@ typedef struct {
 typedef struct {
 	int n, nl;
 	char s[OSIZE];
-	fmpz_poly_t onum, oden;
+	fmpz_poly_t onum, oden, a, b;
 } GLOBAL;
 
 void simplify (fmpz_poly_t *, fmpz_poly_t *);
