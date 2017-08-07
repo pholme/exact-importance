@@ -1,3 +1,6 @@
+// C code corresponding to infmax.py (using the FLINT library)
+// see infmax.py for more detailed comments#include "poly.h"
+
 #include "poly.h"
 
 NODE n[N];
@@ -30,16 +33,11 @@ void get_infect_reco (int *infectables, int *ninfectables,
 void stepdown (fmpz_poly_t wnum0, fmpz_poly_t wden0) {
 	int i, si = 0, you, infways[N];
 	int infectables[N], ninfectables = 0, recoverables[N], nrecoverables = 0;
-	fmpz_poly_t wnum, wden, num, den, a, b, c, d;
+	fmpz_poly_t wnum, wden, den;
 
 	fmpz_poly_init(wnum);
 	fmpz_poly_init(wden);
-	fmpz_poly_init(num);
 	fmpz_poly_init(den);
-	fmpz_poly_init(a);
-	fmpz_poly_init(b);
-	fmpz_poly_init(c);
-	fmpz_poly_init(d);
 
 	fmpz_poly_set(wnum, wnum0);
 	fmpz_poly_set(wden, wden0);
@@ -49,12 +47,12 @@ void stepdown (fmpz_poly_t wnum0, fmpz_poly_t wden0) {
 	for (i = 0; i < ninfectables; i++) si += infways[infectables[i]];
 
 	if (si == 0) {
-		fmpz_poly_mul(a, g.onum, wden);
-		fmpz_poly_mul(b, g.oden, wnum);
-		fmpz_poly_scalar_mul_ui(d, b, (slong) obsize());
-		fmpz_poly_mul(c, g.oden, wden);
-		fmpz_poly_set(g.oden, c);
-		fmpz_poly_add(g.onum, a, d);
+		fmpz_poly_mul(g.onum, g.onum, wden);
+		fmpz_poly_mul(g.a, g.oden, wnum);
+		fmpz_poly_scalar_mul_ui(g.a, g.a, (slong) obsize());
+		fmpz_poly_add(g.onum, g.onum, g.a);
+
+		fmpz_poly_mul(g.oden, g.oden, wden);
 
 		simplify(&g.onum, &g.oden);
 
@@ -70,12 +68,12 @@ void stepdown (fmpz_poly_t wnum0, fmpz_poly_t wden0) {
 
 		n[you].state = I;
 
-		fmpz_poly_zero(num);
-		fmpz_poly_set_coeff_ui(num, 1, (unsigned long) infways[you]);
-		fmpz_poly_mul(a, wnum, num);
-		fmpz_poly_mul(b, wden, den);
+		fmpz_poly_zero(g.a);
+		fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) infways[you]);
+		fmpz_poly_mul(g.a, g.a, wnum);
+		fmpz_poly_mul(g.b, wden, den);
 
-		stepdown(a, b);
+		stepdown(g.a, g.b);
 
 		n[you].state = S;
 	}
@@ -85,9 +83,9 @@ void stepdown (fmpz_poly_t wnum0, fmpz_poly_t wden0) {
 
 		n[you].state = R;
 
-		fmpz_poly_mul(a, wden, den);
+		fmpz_poly_mul(g.a, wden, den);
 
-		stepdown(wnum, a);
+		stepdown(wnum, g.a);
 
 		n[you].state = I;
 	}
@@ -96,12 +94,7 @@ void stepdown (fmpz_poly_t wnum0, fmpz_poly_t wden0) {
 
 	fmpz_poly_clear(wnum);
 	fmpz_poly_clear(wden);
-	fmpz_poly_clear(num);
 	fmpz_poly_clear(den);
-	fmpz_poly_clear(a);
-	fmpz_poly_clear(b);
-	fmpz_poly_clear(c);
-	fmpz_poly_clear(d);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -122,6 +115,8 @@ int main (int argc, char *argv[]) {
 	fmpz_poly_init(wden);
 	fmpz_poly_init(g.onum);
 	fmpz_poly_init(g.oden);
+	fmpz_poly_init(g.a);
+	fmpz_poly_init(g.b);
 
 	// reading and setting up the network
 	g.nl = atoi(argv[1]);
@@ -157,6 +152,8 @@ int main (int argc, char *argv[]) {
 	fmpz_poly_clear(wden);
 	fmpz_poly_clear(g.onum);
 	fmpz_poly_clear(g.oden);
+	fmpz_poly_clear(g.a);
+	fmpz_poly_clear(g.b);
 
 	return 0;
 }
