@@ -44,23 +44,10 @@ void strc (char *sin, char *sout) {
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 void simplify (fmpz_poly_t *p, fmpz_poly_t *q) {
-	fmpz_poly_t p0, q0, s;
 
-	fmpz_poly_init(p0);
-	fmpz_poly_init(q0);
-	fmpz_poly_init(s);
-
-	fmpz_poly_set(p0, *p);
-	fmpz_poly_set(q0, *q);
-
-	fmpz_poly_gcd_modular(s, p0, q0);
-
-	fmpz_poly_div(*p, p0, s);
-	fmpz_poly_div(*q, q0, s);
-
-	fmpz_poly_clear(p0);
-	fmpz_poly_clear(q0);
-	fmpz_poly_clear(s);
+	fmpz_poly_gcd_modular(g.a, *p, *q);
+	fmpz_poly_div(*p, *p, g.a);
+	fmpz_poly_div(*q, *q, g.a);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
