@@ -2,12 +2,15 @@
 // see senti.py for more detailed comments
 
 #include "poly.h"
+#include <fmpq.h>
 
 NODE n[N];
 GLOBAL g;
+fmpq_t q;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// making a list of nodes that can be infected or recovered (very naive)
+// making a list of nodes that can be infected or recovered
+// (very naive, not the bottleneck anyway)
 
 void get_infect_reco (int *infectables, int *ninfectables,
 		int *recoverables, int *nrecoverables, int *infways) {
@@ -30,27 +33,29 @@ void get_infect_reco (int *infectables, int *ninfectables,
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-void stepdown (fmpz_poly_t wnum, fmpz_poly_t wden0, fmpz_poly_t donum0, fmpz_poly_t doden0) {
+void stepdown (fmpz_poly_t wnum, fmpz_poly_t wden, fmpz_poly_t donum, fmpz_poly_t doden) {
 	int i, si = 0, you, infways[N];
 	int infectables[N], ninfectables = 0, recoverables[N], nrecoverables = 0;
-	fmpz_poly_t wden, donum, doden, nnum;
-
-	fmpz_poly_init(donum);
-	fmpz_poly_init(doden);
-	fmpz_poly_init(wden);
-	fmpz_poly_init(nnum);
-
-	fmpz_poly_set(wden, wden0);
-	fmpz_poly_set(donum, donum0);
-	fmpz_poly_set(doden, doden0);
+	fmpz_poly_t donum0, doden0, wden0, wnum0;
 
 	get_infect_reco(infectables, &ninfectables, recoverables, &nrecoverables, infways);
 	
 	for (i = 0; i < ninfectables; i++) si += infways[infectables[i]];
 
-	if ((si == 0) && (nrecoverables == 0)) {
-		fmpz_poly_mul(g.a, donum, wnum);
-		fmpz_poly_mul(g.b, doden, wden);
+	if (si == 0) {
+		if (nrecoverables > 0) {
+			fmpq_harmonic_ui(q, nrecoverables);
+			fmpz_poly_scalar_mul_fmpz(g.a, doden, fmpq_numref(q));
+			fmpz_poly_scalar_mul_fmpz(g.b, donum, fmpq_denref(q));
+			fmpz_poly_add(g.a, g.a, g.b);
+			fmpz_poly_scalar_mul_fmpz(g.b, doden, fmpq_denref(q));
+			fmpz_poly_mul(g.a, g.a, wnum);
+			fmpz_poly_mul(g.b, g.b, wden);
+		} else {
+			fmpz_poly_mul(g.a, donum, wnum);
+			fmpz_poly_mul(g.b, doden, wden);
+		}
+
 		fmpz_poly_mul(g.a, g.a, g.oden);
 		fmpz_poly_mul(g.onum, g.onum, g.b);
 		fmpz_poly_add(g.onum, g.onum, g.a);
@@ -58,55 +63,56 @@ void stepdown (fmpz_poly_t wnum, fmpz_poly_t wden0, fmpz_poly_t donum0, fmpz_pol
 
 		simplify(&g.onum, &g.oden);
 
-		goto CLEAR_EXIT;
+		return;
 	}
 
-	fmpz_poly_zero(g.b);
-	fmpz_poly_set_coeff_ui(g.b, 0, (unsigned long) nrecoverables);
-	fmpz_poly_set_coeff_ui(g.b, 1, (unsigned long) si);
+	fmpz_poly_init(donum0);
+	fmpz_poly_init(doden0);
+	fmpz_poly_init(wden0);
+	fmpz_poly_init(wnum0);
 
-	fmpz_poly_mul(g.a, g.b, donum);
-	fmpz_poly_add(donum, g.a, doden);
-	fmpz_poly_mul(doden, doden, g.b);
-	fmpz_poly_mul(wden, wden, g.b);
+	fmpz_poly_set_ui(g.a, (unsigned long) nrecoverables);
+	fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) si);
+
+	fmpz_poly_mul(donum0, g.a, donum);
+	fmpz_poly_add(donum0, donum0, doden);
+	fmpz_poly_mul(doden0, doden, g.a);
+	fmpz_poly_mul(wden0, wden, g.a);
 	
-	simplify(&donum, &doden);
+	simplify(&donum0, &doden0);
 
 	for (i = 0; i < ninfectables; i++) {
 		you = infectables[i];
 		fmpz_poly_zero(g.a);
 		fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) infways[you]);
-		fmpz_poly_mul(nnum, g.a, wnum);
+		fmpz_poly_mul(wnum0, g.a, wnum);
 
 		if (n[you].state == SENTI) {
-			fmpz_poly_mul(g.a, donum, nnum);
-			fmpz_poly_mul(g.b, doden, wden);
+			fmpz_poly_mul(g.a, donum0, wnum0);
+			fmpz_poly_mul(g.b, doden0, wden0);
 			fmpz_poly_mul(g.a, g.a, g.oden);
 			fmpz_poly_mul(g.onum, g.onum, g.b);
 			fmpz_poly_add(g.onum, g.onum, g.a);
 			fmpz_poly_mul(g.oden, g.oden, g.b);
 
 			simplify(&g.onum, &g.oden);
-
 		} else {
 			n[you].state = I;
-			stepdown(nnum, wden, donum, doden);
+			stepdown(wnum0, wden0, donum0, doden0);
 			n[you].state = S;
 		}
 	}
 	
 	for (i = 0; i < nrecoverables; i++) {
 		n[you = recoverables[i]].state = R;
-		stepdown(wnum, wden, donum, doden);
+		stepdown(wnum, wden0, donum0, doden0);
 		n[you].state = I;
 	}
 
-	CLEAR_EXIT:
-
-	fmpz_poly_clear(donum);
-	fmpz_poly_clear(doden);
-	fmpz_poly_clear(wden);
-	fmpz_poly_clear(nnum);
+	fmpz_poly_clear(donum0);
+	fmpz_poly_clear(doden0);
+	fmpz_poly_clear(wden0);
+	fmpz_poly_clear(wnum0);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -133,6 +139,7 @@ int main (int argc, char *argv[]) {
 	fmpz_poly_init(soden);
 	fmpz_poly_init(g.onum);
 	fmpz_poly_init(g.oden);
+	fmpq_init(q);
 
 	// reading and setting up the network
 	g.nl = atoi(argv[1]);
@@ -192,6 +199,7 @@ int main (int argc, char *argv[]) {
 	fmpz_poly_clear(doden);
 	fmpz_poly_clear(g.onum);
 	fmpz_poly_clear(g.oden);
+	fmpq_clear(q);
 
 	return 0;
 }
