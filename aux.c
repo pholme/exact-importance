@@ -45,7 +45,7 @@ void strc (char *sin, char *sout) {
 
 void simplify (fmpz_poly_t *p, fmpz_poly_t *q) {
 
-	fmpz_poly_gcd_modular(g.a, *p, *q);
+	fmpz_poly_gcd(g.a, *p, *q);
 	fmpz_poly_div(*p, *p, g.a);
 	fmpz_poly_div(*q, *q, g.a);
 }
