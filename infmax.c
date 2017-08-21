@@ -1,5 +1,5 @@
 // C code corresponding to infmax.py (using the FLINT library)
-// see infmax.py for more detailed comments#include "poly.h"
+// see infmax.py for more detailed comments
 
 #include "poly.h"
 
