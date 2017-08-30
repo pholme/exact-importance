@@ -1,54 +1,33 @@
 // C code corresponding to senti.py (using the FLINT library)
-// see senti.py for more detailed comments
 
 #include "poly.h"
 #include <fmpq.h>
 
-NODE n[N];
 GLOBAL g;
-fmpq_t q;
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// making a list of nodes that can be infected or recovered
-// (very naive, not the bottleneck anyway)
-
-void get_infect_reco (int *infectables, int *ninfectables,
-		int *recoverables, int *nrecoverables, int *infways) {
-	int i, me, you;
-
-	for (i = 0; i < g.n; i++) infways[i] = 0;
-
-	for (me = 0; me < g.n; me++) {
-		if ((n[me].state == S) || (n[me].state == SENTI)) {
-			for (i = 0; i < n[me].deg; i++) {
-				you = n[me].nb[i];
-				if (n[you].state == I) infways[me]++;
-			}
-			if (infways[me] > 0) infectables[(*ninfectables)++] = me;
-		} else {
-			if (n[me].state == I) recoverables[(*nrecoverables)++] = me;
-		}
-	}
-}
+NODE n[MAXN];
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-void stepdown (fmpz_poly_t wnum, fmpz_poly_t wden, fmpz_poly_t donum, fmpz_poly_t doden) {
-	int i, si = 0, you, infways[N];
-	int infectables[N], ninfectables = 0, recoverables[N], nrecoverables = 0;
+void stepdown_senti (fmpz_poly_t wnum, fmpz_poly_t wden, fmpz_poly_t donum,
+		fmpz_poly_t doden) {
+	int i, you, multiplicity[MAXN], to_step_to[MAXN], ninfectables;
+	int nto_step_to, nr, nsi;
 	fmpz_poly_t donum0, doden0, wden0, wnum0;
+	fmpq_t q;
 
-	get_infect_reco(infectables, &ninfectables, recoverables, &nrecoverables, infways);
-	
-	for (i = 0; i < ninfectables; i++) si += infways[infectables[i]];
+	get_inf_rec(&ninfectables, to_step_to, &nto_step_to, multiplicity, &nr,
+			&nsi);
 
-	if (si == 0) {
-		if (nrecoverables > 0) {
-			fmpq_harmonic_ui(q, nrecoverables);
+	if (nsi == 0) { // if no SI links the outbreak will die
+		if (nr > 0) {
+			fmpq_init(q);
+			fmpq_harmonic_ui(q, nr); // time to extinction from here is a partial harmonic sum
 			fmpz_poly_scalar_mul_fmpz(g.a, doden, fmpq_numref(q));
 			fmpz_poly_scalar_mul_fmpz(g.b, donum, fmpq_denref(q));
 			fmpz_poly_add(g.a, g.a, g.b);
 			fmpz_poly_scalar_mul_fmpz(g.b, doden, fmpq_denref(q));
+			fmpq_clear(q);
+			simplify(&g.a, &g.b); // faster to simplify first, multiply later
 			fmpz_poly_mul(g.a, g.a, wnum);
 			fmpz_poly_mul(g.b, g.b, wden);
 		} else {
@@ -59,54 +38,69 @@ void stepdown (fmpz_poly_t wnum, fmpz_poly_t wden, fmpz_poly_t donum, fmpz_poly_
 		fmpz_poly_mul(g.a, g.a, g.oden);
 		fmpz_poly_mul(g.onum, g.onum, g.b);
 		fmpz_poly_add(g.onum, g.onum, g.a);
-		fmpz_poly_mul(g.oden, g.oden, g.b);
 
 		simplify(&g.onum, &g.oden);
+		simplify(&g.onum, &g.b);
+		fmpz_poly_mul(g.oden, g.oden, g.b);
 
 		return;
 	}
+	
+	// calculating denominators
+	fmpz_poly_init2(donum0, 1 + fmpz_poly_length(donum));
+	fmpz_poly_init2(doden0, 1 + fmpz_poly_length(doden));
+	fmpz_poly_init2(wnum0, 1 + fmpz_poly_length(wnum));
+	fmpz_poly_init2(wden0, 1 + fmpz_poly_length(wden));
 
-	fmpz_poly_init(donum0);
-	fmpz_poly_init(doden0);
-	fmpz_poly_init(wden0);
-	fmpz_poly_init(wnum0);
+	fmpz_poly_set_ui(g.a, (unsigned long) nr);
+	fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) nsi);
 
-	fmpz_poly_set_ui(g.a, (unsigned long) nrecoverables);
-	fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) si);
+	fmpz_poly_mul(wden0, wden, g.a);
 
 	fmpz_poly_mul(donum0, g.a, donum);
 	fmpz_poly_add(donum0, donum0, doden);
-	fmpz_poly_mul(doden0, doden, g.a);
-	fmpz_poly_mul(wden0, wden, g.a);
-	
-	simplify(&donum0, &doden0);
 
-	for (i = 0; i < ninfectables; i++) {
-		you = infectables[i];
+	fmpz_poly_gcd(g.s, donum0, doden);
+	fmpz_poly_div(donum0, donum0, g.s);
+	fmpz_poly_div(g.b, doden, g.s);
+
+	fmpz_poly_gcd(g.s, donum0, g.a);
+	fmpz_poly_div(donum0, donum0, g.s);
+	fmpz_poly_div(g.a, g.a, g.s);
+
+	fmpz_poly_mul(doden0, g.b, g.a);
+
+	for (i = 0; i < ninfectables; i++) { // going over the infection events
+		you = to_step_to[i];
 		fmpz_poly_zero(g.a);
-		fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) infways[you]);
+		fmpz_poly_set_coeff_ui(g.a, 1, (unsigned long) multiplicity[you]);
 		fmpz_poly_mul(wnum0, g.a, wnum);
 
-		if (n[you].state == SENTI) {
+		if (IS_SENTINEL(you)) {
 			fmpz_poly_mul(g.a, donum0, wnum0);
 			fmpz_poly_mul(g.b, doden0, wden0);
 			fmpz_poly_mul(g.a, g.a, g.oden);
 			fmpz_poly_mul(g.onum, g.onum, g.b);
 			fmpz_poly_add(g.onum, g.onum, g.a);
-			fmpz_poly_mul(g.oden, g.oden, g.b);
 
 			simplify(&g.onum, &g.oden);
+			simplify(&g.onum, &g.b);
+
+			fmpz_poly_mul(g.oden, g.oden, g.b);
 		} else {
-			n[you].state = I;
-			stepdown(wnum0, wden0, donum0, doden0);
-			n[you].state = S;
+			n[you].state = INFECTIOUS;
+			stepdown_senti(wnum0, wden0, donum0, doden0);
+			n[you].state = SUSCEPTIBLE;
 		}
 	}
 	
-	for (i = 0; i < nrecoverables; i++) {
-		n[you = recoverables[i]].state = R;
-		stepdown(wnum, wden0, donum0, doden0);
-		n[you].state = I;
+	for ( ; i < nto_step_to; i++) {  // going over the recovery events
+		you = to_step_to[i];
+
+		n[you].state = RECOVERED;
+		fmpz_poly_scalar_mul_ui(wnum0, wnum, (unsigned long) multiplicity[you]);
+		stepdown_senti(wnum0, wden0, donum0, doden0);
+		n[you].state = INFECTIOUS;
 	}
 
 	fmpz_poly_clear(donum0);
@@ -131,22 +125,27 @@ int main (int argc, char *argv[]) {
 	s1[0] = s2[0] = s3[0] = '\0';
 	fmpz_poly_init(g.a);
 	fmpz_poly_init(g.b);
+	fmpz_poly_init(g.s);
+	// (wnum / wden) is the probability of a branch of the search tree 
 	fmpz_poly_init(wnum);
 	fmpz_poly_init(wden);
+	// (donum / doden) is the duration to traverse a branch of the search tree 
 	fmpz_poly_init(donum);
 	fmpz_poly_init(doden);
-	fmpz_poly_init(sonum);
-	fmpz_poly_init(soden);
+	// (g.onum / g.oden) is the weighted sum of durations over branches
 	fmpz_poly_init(g.onum);
 	fmpz_poly_init(g.oden);
-	fmpq_init(q);
+	// (sonum / soden) is the sum over seeds of (g.onum / g.oden)
+	fmpz_poly_init(sonum);
+	fmpz_poly_init(soden);
 
 	// reading and setting up the network
 	g.nl = atoi(argv[1]);
 	g.n = 0;
-	for (i = 0; i < N; i++) {
+	for (i = 0; i < MAXN; i++) {
 		n[i].deg = 0;
-		n[i].state = S;
+		n[i].id = i;
+		n[i].state = SUSCEPTIBLE;
 	}
 
 	for (i = 0; i < g.nl; i++)
@@ -154,7 +153,7 @@ int main (int argc, char *argv[]) {
 
 	// setting the seeds
 	for (i = 2 + 2 * g.nl, j = 0; i < argc; i++, j++) {
-		n[atoi(argv[i])].state = SENTI;   
+		n[atoi(argv[i])].state = SENTINEL;   
 		if (j > 0) strcat(s1, " ");
 		strcat(s1, argv[i]);
 	}
@@ -162,7 +161,7 @@ int main (int argc, char *argv[]) {
 	fmpz_poly_zero(sonum);
 	fmpz_poly_one(soden);
 
-	for (i = 0; i < g.n; i++) {
+	for (i = 0; i < g.n; i++) { // loop over all nodes as seeds
 		fmpz_poly_one(wnum);
 		fmpz_poly_one(wden);
 		fmpz_poly_zero(donum);
@@ -170,16 +169,16 @@ int main (int argc, char *argv[]) {
 		fmpz_poly_zero(g.onum);
 		fmpz_poly_one(g.oden);
 		
-		for (j = 0; j < g.n; j++) if (n[j].state != SENTI) n[j].state = S;
-		if (n[i].state != SENTI) n[i].state = I;
-		stepdown(wnum, wden, donum, doden);
+		for (j = 0; j < g.n; j++) if (NOT_SENTINEL(j)) n[j].state = SUSCEPTIBLE;
+		if (NOT_SENTINEL(i)) n[i].state = INFECTIOUS;
+		stepdown_senti(wnum, wden, donum, doden);
 
 		fmpz_poly_mul(g.a, g.onum, soden);
 		fmpz_poly_mul(sonum, sonum, g.oden);
 		fmpz_poly_add(sonum, sonum, g.a);
-		fmpz_poly_mul(soden, soden, g.oden);
-
 		simplify(&sonum, &soden);
+		simplify(&sonum, &g.oden);
+		fmpz_poly_mul(soden, soden, g.oden);
 	}
 
 	fmpz_poly_scalar_mul_ui(g.b, soden, (slong) g.n);
@@ -191,6 +190,7 @@ int main (int argc, char *argv[]) {
 
 	fmpz_poly_clear(g.a);
 	fmpz_poly_clear(g.b);
+	fmpz_poly_clear(g.s);
 	fmpz_poly_clear(wnum);
 	fmpz_poly_clear(wden);
 	fmpz_poly_clear(sonum);
@@ -199,7 +199,6 @@ int main (int argc, char *argv[]) {
 	fmpz_poly_clear(doden);
 	fmpz_poly_clear(g.onum);
 	fmpz_poly_clear(g.oden);
-	fmpq_clear(q);
 
 	return 0;
 }
