@@ -83,9 +83,6 @@ int iso_i (int me, int you) {
 	igraph_vector_int_destroy(&cme);
 	igraph_vector_int_destroy(&cyou);
 
-	if (isomorphic) g.niso_i++;
-	else g.nniso_i++;
-
 	return (int) isomorphic;
 }
 
